@@ -4,7 +4,7 @@ import com.opencsv.bean.CsvBindByName;
 import lombok.Data;
 
 @Data
-public class SettingModel {
+public class HostsModel {
 
     @CsvBindByName(column = "ip")
     private String ip;
