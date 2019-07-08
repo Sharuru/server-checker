@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 public class HostsModel {
 
-    @CsvBindByName(column = "ip")
-    private String ip;
+    @CsvBindByName(column = "host")
+    private String host;
 
     @CsvBindByName(column = "url")
     private String url;

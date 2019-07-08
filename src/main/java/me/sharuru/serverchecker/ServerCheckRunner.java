@@ -5,11 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-import java.io.FileReader;
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,119 +20,99 @@ import java.util.concurrent.*;
 @Component
 public class ServerCheckRunner implements CommandLineRunner {
 
-    private List<HostsModel> hostList = new ArrayList<>(0);
     private Map<String, CheckResultModel> checkResultList = new HashMap<>();
-    List<CompletableFuture<Integer>> aaa = new ArrayList<>();
+    private List<CompletableFuture<Integer>> taskFutures = new ArrayList<>();
+
+    private static final int THREADPOOL_SIZE = 3;
+    private static final int PING_TIMES = 5;
+    private static final int CONNECTION_TIMEOUT = 2000;
 
     @Override
     public void run(String... args) throws Exception {
         log.info("===== JOB STARTED =====");
 
-        log.info("Step 0. Read setting file");
-        hostList = new CsvToBeanBuilder(new FileReader("D:\\hosts.txt")).withType(HostsModel.class).build().parse();
+        log.info("Step 0. Read setting file.");
+        @SuppressWarnings("unchecked")
+        List<HostsModel> hostList = new CsvToBeanBuilder(Files.newBufferedReader(Paths.get(("D:\\hosts.txt")))).withType(HostsModel.class).build().parse();
 
-        log.info("Step 1. Check server using PING");
+        ExecutorService executor = Executors.newFixedThreadPool(THREADPOOL_SIZE);
 
-        ExecutorService executor = Executors.newFixedThreadPool(3);
-
+        log.info("Step 1. Check server using Ping.");
         for (HostsModel model : hostList) {
             CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> {
                 try {
-                    long time = 0L;
-                    int errorCount = 0;
-                    log.info("Ping {}, // {}", model.getIp(), model.getMemo());
-                    for (int i = 0; i < 5; i++) {
+                    long latency = 0L;
+                    int errorTimes = 0;
+                    log.info("Now ping check on: {}, {}", model.getHost(), model.getMemo());
+                    for (int i = 0; i < PING_TIMES; i++) {
                         long currentTime = System.currentTimeMillis();
-                        boolean isPinged = false; // 2 seconds
-
-                        isPinged = InetAddress.getByName(model.getIp()).isReachable(2000);
-
+                        boolean isPinged;
+                        isPinged = InetAddress.getByName(model.getHost()).isReachable(CONNECTION_TIMEOUT);
                         currentTime = System.currentTimeMillis() - currentTime;
                         if (isPinged) {
-                            time += currentTime;
+                            latency += currentTime;
                         } else {
-                            errorCount++;
+                            errorTimes++;
                         }
-
                         TimeUnit.SECONDS.sleep(1L);
                     }
-                    if (errorCount == 5) {
+                    if (errorTimes == PING_TIMES) {
                         CheckResultModel result = new CheckResultModel();
-                        result.setUrl(model.getUrl());
-                        result.setIp(model.getIp());
-                        result.setPort(model.getPort());
-                        result.setMemo(model.getMemo());
+                        result.setBase(model);
                         result.setPingTestResult(false);
-                        result.setPingTestMemo("PING test failed, 0/5");
+                        result.setPingTestMemo("Ping check is failed, 0/5.");
                         checkResultList.putIfAbsent(String.valueOf(model.hashCode()), result);
-                        //log.error("{} is not usable.", model.getIp());
                     } else {
-                        //log.info("Avg. " + (double) time / (5 - errorCount) + " ms");
                         CheckResultModel result = new CheckResultModel();
-                        result.setUrl(model.getUrl());
-                        result.setIp(model.getIp());
-                        result.setPort(model.getPort());
-                        result.setMemo(model.getMemo());
+                        result.setBase(model);
                         result.setPingTestResult(true);
-                        result.setPingTestMemo("PING test passed, avg: " + (double) time / (5 - errorCount) + "ms, " + (5 - errorCount) + "/5");
+                        result.setPingTestMemo("Ping check passed, average latency: " + (double) latency / (PING_TIMES - errorTimes) + "ms, " + (PING_TIMES - errorTimes) + "/" + PING_TIMES);
                         checkResultList.putIfAbsent(String.valueOf(model.hashCode()), result);
                     }
                 } catch (Exception e) {
-                    log.error("" + e.getMessage());
+                    log.error("Exception happened in ping check. {}", e.getMessage());
+                    return -1;
                 }
 
                 return 0;
+
             }, executor);
-            aaa.add(future);
+            taskFutures.add(future);
         }
 
-        CompletableFuture.allOf(aaa.toArray(new CompletableFuture[0])).join();
-
-        aaa.forEach(c ->{
-            try {
-                log.info(String.valueOf(c.get()));
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (ExecutionException e) {
-                e.printStackTrace();
-            }
-        });
-
-
-//        executor.shutdown();
-//        try {
-//            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-//        } catch (InterruptedException e) {
-//
-//        }
-
+        // wait all task finished
+        CompletableFuture.allOf(taskFutures.toArray(new CompletableFuture[0])).join();
 
         log.info("Step 2. Port check");
         for (HostsModel model : hostList) {
-            Socket s = new Socket();
-            try {
-                log.info("Connect {}, // {}", model.getIp(), model.getMemo());
-                s.connect(new InetSocketAddress(model.getIp(), model.getPort()), 2000);
-                s.setSoTimeout(2000);
-                checkResultList.get(String.valueOf(model.hashCode())).setPortTestResult(true);
-                //checkResultList.get(String.valueOf(model.hashCode())).setPortTestMemo("Port test passed.");
-            } catch (Exception e) {
-                checkResultList.get(String.valueOf(model.hashCode())).setPortTestResult(false);
-                checkResultList.get(String.valueOf(model.hashCode())).setPortTestMemo("Port test failed." + e.getMessage());
-                //log.error("{} Not good", model.getIp());
-                //e.printStackTrace();
-            } finally {
+            CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> {
+                Socket socketClient = new Socket();
                 try {
-                    s.close();
+                    log.info("Now ping check on: {}, {}", model.getHost(), model.getMemo());
+                    socketClient.connect(new InetSocketAddress(model.getHost(), model.getPort()), CONNECTION_TIMEOUT);
+                    socketClient.setSoTimeout(CONNECTION_TIMEOUT);
+                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestResult(true);
+                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestMemo("Port check passed.");
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestResult(false);
+                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestMemo("Port check failed. " + e.getMessage());
+                } finally {
+                    try {
+                        socketClient.close();
+                    } catch (Exception e) {
+                        log.error("Exception happened in port check. {}" + e.getMessage());
+                    }
                 }
-            }
-
+                return 0;
+            }, executor);
+            taskFutures.add(future);
         }
 
+        // wait all task finished
+        CompletableFuture.allOf(taskFutures.toArray(new CompletableFuture[0])).join();
+
         checkResultList.forEach((k, v) -> {
-            log.info(v.getIp() + "|| " + v.getPort() + " || " + v.toString());
+            log.info(v.getHost() + " || " + v.getPort() + " || " + v.toString());
         });
 
         log.info("===== JOB FINISHED =====");

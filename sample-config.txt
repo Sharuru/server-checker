@@ -1,0 +1,4 @@
+host,url,port,memo
+www.baidu.com,http://www.baidu.com,80,Baidu
+www.sina.com,http://www.sina.com,80,Sina
+www.NOT_EXIST.com,http://www.NOT_EXIST.com,9999,NOT_EXIST
