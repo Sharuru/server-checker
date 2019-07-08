@@ -13,8 +13,8 @@ public class CheckResultModel extends HostsModel {
     private boolean portTestResult = false;
     private String portTestMemo;
 
-    private boolean wgetTestResult = false;
-    private String wgetTestMemo;
+    private boolean httpTestResult = false;
+    private String httpTestMemo;
 
     public void setBase(HostsModel model) {
         this.setHost(model.getHost());

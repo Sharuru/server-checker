@@ -5,9 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -61,13 +59,13 @@ public class ServerCheckRunner implements CommandLineRunner {
                         result.setBase(model);
                         result.setPingTestResult(false);
                         result.setPingTestMemo("Ping check is failed, 0/5.");
-                        checkResultList.putIfAbsent(String.valueOf(model.hashCode()), result);
+                        checkResultList.putIfAbsent(model.getIdentify(), result);
                     } else {
                         CheckResultModel result = new CheckResultModel();
                         result.setBase(model);
                         result.setPingTestResult(true);
                         result.setPingTestMemo("Ping check passed, average latency: " + (double) latency / (PING_TIMES - errorTimes) + "ms, " + (PING_TIMES - errorTimes) + "/" + PING_TIMES);
-                        checkResultList.putIfAbsent(String.valueOf(model.hashCode()), result);
+                        checkResultList.putIfAbsent(model.getIdentify(), result);
                     }
                 } catch (Exception e) {
                     log.error("Exception happened in ping check. {}", e.getMessage());
@@ -91,11 +89,11 @@ public class ServerCheckRunner implements CommandLineRunner {
                     log.info("Now ping check on: {}, {}", model.getHost(), model.getMemo());
                     socketClient.connect(new InetSocketAddress(model.getHost(), model.getPort()), CONNECTION_TIMEOUT);
                     socketClient.setSoTimeout(CONNECTION_TIMEOUT);
-                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestResult(true);
-                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestMemo("Port check passed.");
+                    checkResultList.get(model.getIdentify()).setPortTestResult(true);
+                    checkResultList.get(model.getIdentify()).setPortTestMemo("Port check passed.");
                 } catch (Exception e) {
-                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestResult(false);
-                    checkResultList.get(String.valueOf(model.hashCode())).setPortTestMemo("Port check failed. " + e.getMessage());
+                    checkResultList.get(model.getIdentify()).setPortTestResult(false);
+                    checkResultList.get(model.getIdentify()).setPortTestMemo("Port check failed. " + e.getMessage());
                 } finally {
                     try {
                         socketClient.close();
@@ -111,12 +109,42 @@ public class ServerCheckRunner implements CommandLineRunner {
         // wait all task finished
         CompletableFuture.allOf(taskFutures.toArray(new CompletableFuture[0])).join();
 
+
+        log.info("Step 3. HTTP status code check");
+        for (HostsModel model : hostList) {
+            CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> {
+                HttpURLConnection connection = null;
+                try {
+                    log.info("Now http check on: {}, {}", model.getUrl(), model.getMemo());
+                    URL url = new URL(model.getUrl());
+                    connection = (HttpURLConnection) url.openConnection();
+                    connection.setRequestMethod("GET");
+                    connection.setConnectTimeout(CONNECTION_TIMEOUT);
+                    connection.setConnectTimeout(CONNECTION_TIMEOUT);
+                    connection.connect();
+                    checkResultList.get(model.getIdentify()).setHttpTestResult(true);
+                    checkResultList.get(model.getIdentify()).setHttpTestMemo("Http check passed. Status code: " + connection.getResponseCode());
+                    connection.disconnect();
+                } catch (Exception e) {
+                    checkResultList.get(model.getIdentify()).setHttpTestResult(true);
+                    checkResultList.get(model.getIdentify()).setHttpTestMemo("Http check failed. " + e.getMessage());
+                } finally {
+                    if (connection != null) {
+                        connection.disconnect();
+                    }
+                }
+                return 0;
+            }, executor);
+            taskFutures.add(future);
+        }
+
+        // wait all task finished
+        CompletableFuture.allOf(taskFutures.toArray(new CompletableFuture[0])).join();
+
         checkResultList.forEach((k, v) -> {
             log.info(v.getHost() + " || " + v.getPort() + " || " + v.toString());
         });
-
         log.info("===== JOB FINISHED =====");
-
         executor.shutdown();
     }
 
