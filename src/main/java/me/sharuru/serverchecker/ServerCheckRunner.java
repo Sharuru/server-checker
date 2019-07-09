@@ -14,16 +14,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Slf4j
 @Component
 public class ServerCheckRunner implements CommandLineRunner {
 
-    private Map<String, CheckResultModel> checkResults = new HashMap<>();
+    private ConcurrentHashMap<String, CheckResultModel> checkResults = new ConcurrentHashMap<>();
     List<CompletableFuture<Integer>> taskFutures = new ArrayList<>();
 
     @Value("${app.thread-pool-size:3}")
