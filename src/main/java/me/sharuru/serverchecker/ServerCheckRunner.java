@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.net.*;
 import java.nio.file.Files;
@@ -158,11 +159,19 @@ public class ServerCheckRunner implements CommandLineRunner {
 
         // results
         checkResults.forEach((k, v) ->
-                log.info("\n Host: {} \n Ping Check: {} - {} \n Port Check: {} - {} - {} \n HTTP Check: {} - {} - {} - {}",
-                v.getHost(),
-                v.isPingTestResult() ? "OK" : "NG", v.getPingTestMemo(),
-                v.getHost() + ":" + v.getPort(), v.isPortTestResult() ? "OK" : "NG", v.getPortTestMemo(),
-                v.getUrl(), v.isHttpTestResult() ? "OK" : "NG", v.getPort(), v.getHttpTestMemo()));
+            log.info("\n " +
+                        "Host: {} / Port: {} / Url: {} / Memo: {} \n " +
+                        "Check result(Ping/Port/HTTP): {} / {} / {} \n " +
+                        "Info: \n" +
+                        " {} \n" +
+                        " {} \n" +
+                        " {} \n",
+                    v.getHost(), v.getPort(), v.getUrl(),
+                    v.getMemo(), v.isPingTestResult() ? "OK" : "NG",v.isPortTestResult() ? "OK" : "NG",v.isHttpTestResult() ? "OK" : "NG",
+                    v.getPingTestMemo(),
+                    v.getPortTestMemo(),
+                    v.getHttpTestMemo())
+        );
 
         log.info("===== JOB FINISHED =====");
         executor.shutdown();
