@@ -18,7 +18,7 @@ public class HostsModel {
     @CsvBindByName(column = "memo")
     private String memo;
 
-    public String getIdentify(){
+    public String getIdentify() {
         return this.host + "#" + this.port + "#" + this.url + "#" + this.memo;
     }
 

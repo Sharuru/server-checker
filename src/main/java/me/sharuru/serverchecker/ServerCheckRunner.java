@@ -5,15 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.*;
 
 @Slf4j
@@ -21,14 +18,14 @@ import java.util.concurrent.*;
 public class ServerCheckRunner implements CommandLineRunner {
 
     private ConcurrentHashMap<String, CheckResultModel> checkResults = new ConcurrentHashMap<>();
-    List<CompletableFuture<Integer>> taskFutures = new ArrayList<>();
+    private List<CompletableFuture<Integer>> taskFutures = new ArrayList<>();
 
     @Value("${app.thread-pool-size:3}")
-    private int THREADPOOL_SIZE;
+    private int threadpoolSize;
     @Value("${app.ping-times:5}")
-    private int PING_TIMES;
+    private int pingTimes;
     @Value("${app.connection-timeout:2000}")
-    private int CONNECTION_TIMEOUT;
+    private int connectionTimeout;
     @Value("${app.file-path:NULL}")
     private String configuredFilePath;
 
@@ -41,7 +38,7 @@ public class ServerCheckRunner implements CommandLineRunner {
         @SuppressWarnings("unchecked")
         List<HostsModel> hostList = new CsvToBeanBuilder(Files.newBufferedReader(Paths.get((FILE_PATH)))).withType(HostsModel.class).build().parse();
 
-        ExecutorService executor = Executors.newFixedThreadPool(THREADPOOL_SIZE);
+        ExecutorService executor = Executors.newFixedThreadPool(threadpoolSize);
 
         log.info("Step 1. Check server using Ping.");
         for (HostsModel model : hostList) {
@@ -50,10 +47,10 @@ public class ServerCheckRunner implements CommandLineRunner {
                     long latency = 0L;
                     int errorTimes = 0;
                     log.info("Now ping check on: {}, {}", model.getHost(), model.getMemo());
-                    for (int i = 0; i < PING_TIMES; i++) {
+                    for (int i = 0; i < pingTimes; i++) {
                         long currentTime = System.currentTimeMillis();
                         boolean isPinged;
-                        isPinged = InetAddress.getByName(model.getHost()).isReachable(CONNECTION_TIMEOUT);
+                        isPinged = InetAddress.getByName(model.getHost()).isReachable(connectionTimeout);
                         currentTime = System.currentTimeMillis() - currentTime;
                         if (isPinged) {
                             latency += currentTime;
@@ -62,17 +59,17 @@ public class ServerCheckRunner implements CommandLineRunner {
                         }
                         TimeUnit.SECONDS.sleep(1L);
                     }
-                    if (errorTimes == PING_TIMES) {
+                    if (errorTimes == pingTimes) {
                         CheckResultModel result = new CheckResultModel();
                         result.setBase(model);
                         result.setPingTestResult(false);
-                        result.setPingTestMemo("Ping check is failed, 0/" + PING_TIMES + ".");
+                        result.setPingTestMemo("Ping check is failed, 0/" + pingTimes + ".");
                         checkResults.putIfAbsent(model.getIdentify(), result);
                     } else {
                         CheckResultModel result = new CheckResultModel();
                         result.setBase(model);
                         result.setPingTestResult(true);
-                        result.setPingTestMemo("Ping check passed, average latency: " + (double) latency / (PING_TIMES - errorTimes) + "ms, " + (PING_TIMES - errorTimes) + "/" + PING_TIMES);
+                        result.setPingTestMemo("Ping check passed, average latency: " + (double) latency / (pingTimes - errorTimes) + "ms, " + (pingTimes - errorTimes) + "/" + pingTimes);
                         checkResults.putIfAbsent(model.getIdentify(), result);
                     }
                 } catch (Exception e) {
@@ -95,8 +92,8 @@ public class ServerCheckRunner implements CommandLineRunner {
                 Socket socketClient = new Socket();
                 try {
                     log.info("Now port check on: {}, {}", model.getHost(), model.getMemo());
-                    socketClient.connect(new InetSocketAddress(model.getHost(), model.getPort()), CONNECTION_TIMEOUT);
-                    socketClient.setSoTimeout(CONNECTION_TIMEOUT);
+                    socketClient.connect(new InetSocketAddress(model.getHost(), model.getPort()), connectionTimeout);
+                    socketClient.setSoTimeout(connectionTimeout);
                     checkResults.get(model.getIdentify()).setPortTestResult(true);
                     checkResults.get(model.getIdentify()).setPortTestMemo("Port check passed.");
                 } catch (Exception e) {
@@ -117,7 +114,6 @@ public class ServerCheckRunner implements CommandLineRunner {
         // wait all task finished
         CompletableFuture.allOf(taskFutures.toArray(new CompletableFuture[0])).join();
 
-
         log.info("Step 3. HTTP status code check");
         for (HostsModel model : hostList) {
             CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> {
@@ -127,8 +123,8 @@ public class ServerCheckRunner implements CommandLineRunner {
                     URL url = new URL(model.getUrl());
                     connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("GET");
-                    connection.setConnectTimeout(CONNECTION_TIMEOUT * 2);
-                    connection.setReadTimeout(CONNECTION_TIMEOUT * 2);
+                    connection.setConnectTimeout(connectionTimeout * 2);
+                    connection.setReadTimeout(connectionTimeout * 2);
                     connection.connect();
                     if(400 <= connection.getResponseCode() && connection.getResponseCode() <=499){
                         checkResults.get(model.getIdentify()).setHttpTestResult(false);

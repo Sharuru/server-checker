@@ -2,4 +2,5 @@ app:
   thread-pool-size: 5
   ping-times: 5
   connection-timeout: 2000
-  file-path: D:\\hosts.csv
+  #file-path: when not set, hosts.csv located at the same folder will be used.
+  
