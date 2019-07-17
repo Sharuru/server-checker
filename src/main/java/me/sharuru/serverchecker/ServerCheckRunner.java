@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import java.io.File;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -34,7 +35,7 @@ public class ServerCheckRunner implements CommandLineRunner {
         log.info("===== JOB STARTED =====");
 
         log.info("Step 0. Read setting file.");
-        final String FILE_PATH = "NULL".equals(configuredFilePath) ? Paths.get("").toAbsolutePath().toString() + "\\hosts.csv" : configuredFilePath;
+        final String FILE_PATH = "NULL".equals(configuredFilePath) ? Paths.get("").toAbsolutePath().toString() + File.separator + "hosts.csv" : configuredFilePath;
         @SuppressWarnings("unchecked")
         List<HostsModel> hostList = new CsvToBeanBuilder(Files.newBufferedReader(Paths.get((FILE_PATH)))).withType(HostsModel.class).build().parse();
 
